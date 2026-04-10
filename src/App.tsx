@@ -184,18 +184,25 @@ const LandingPage = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [rooms, setRooms] = useState<any[]>([]);
+  const [gallery, setGallery] = useState<any[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [settings, setSettings] = useState<any>({ whatsappNumber: WHATSAPP_NUMBER });
+  const [settings, setSettings] = useState<any>({ whatsappNumber: WHATSAPP_NUMBER, bookingRating: '9.7/10' });
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener('scroll', handleScroll);
     
-    const q = query(collection(db, 'rooms'), orderBy('price', 'asc'));
-    const unsubscribeRooms = onSnapshot(q, (snapshot) => {
+    const qRooms = query(collection(db, 'rooms'), orderBy('price', 'asc'));
+    const unsubscribeRooms = onSnapshot(qRooms, (snapshot) => {
       const roomData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setRooms(roomData);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'rooms'));
+
+    const qGallery = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+    const unsubscribeGallery = onSnapshot(qGallery, (snapshot) => {
+      const galleryData = snapshot.docs.map(doc => doc.data().url);
+      setGallery(galleryData);
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
 
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) setSettings(doc.data());
@@ -204,6 +211,7 @@ const LandingPage = () => {
     return () => {
       window.removeEventListener('scroll', handleScroll);
       unsubscribeRooms();
+      unsubscribeGallery();
       unsubscribeSettings();
     };
   }, []);
@@ -222,15 +230,16 @@ const LandingPage = () => {
   const IMAGES = {
     hero: "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1920&q=80",
     lobby: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
-    gallery: [
-      "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80",
-      "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
-    ]
   };
+
+  const displayGallery = gallery.length > 0 ? gallery : [
+    "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1584132967334-10e028bd69f7?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80",
+    "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=800&q=80"
+  ];
 
   return (
     <div className="min-h-screen bg-charcoal selection:bg-gold selection:text-charcoal">
@@ -296,7 +305,9 @@ const LandingPage = () => {
               <div className="flex text-gold">
                 {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
               </div>
-              <span className="text-gold text-xs uppercase tracking-[0.3em] font-bold">9.7/10 Rating on Booking.com</span>
+              <span className="text-gold text-xs uppercase tracking-[0.3em] font-bold">
+                {settings.bookingRating} Rating on Booking.com
+              </span>
             </div>
             <h1 className="text-6xl md:text-8xl font-serif mb-8 leading-tight">Premium <br /><span className="gold-text italic text-5xl md:text-7xl">Guest House Experience</span></h1>
             <p className="text-gray-400 text-lg md:text-xl mb-10 max-w-2xl mx-auto font-light leading-relaxed">
@@ -350,6 +361,68 @@ const LandingPage = () => {
       </section>
 
       {selectedRoom && <BookingForm roomType={selectedRoom} onClose={() => setSelectedRoom(null)} />}
+
+      {/* Amenities Section */}
+      <section id="amenities" className="py-24 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="text-gold uppercase tracking-[0.3em] text-sm mb-4 block">Our Services</span>
+            <h2 className="text-4xl md:text-5xl font-serif">World-Class Amenities</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {[
+              { icon: <Zap size={32} />, title: "24/7 Electricity", desc: "Full Backup Support" },
+              { icon: <Wifi size={32} />, title: "Free Wi-Fi", desc: "High-Speed Internet" },
+              { icon: <Car size={32} />, title: "Secure Parking", desc: "Safe On-site Space" },
+              { icon: <Utensils size={32} />, title: "Restaurant", desc: "Delicious On-site Meals" },
+              { icon: <Shield size={32} />, title: "24/7 Security", desc: "CCTV & Guarded" },
+              { icon: <Coffee size={32} />, title: "Room Service", desc: "Available at Call" },
+              { icon: <Clock size={32} />, title: "Quick Check-in", desc: "Seamless Experience" },
+              { icon: <Award size={32} />, title: "Top Rated", desc: `${settings.bookingRating} Guest Rating` },
+            ].map((item, index) => (
+              <div key={index} className="p-8 bg-charcoal rounded-3xl border border-white/5 text-center group hover:border-gold/40 hover:bg-black/40 transition-all duration-500 shadow-lg">
+                <div className="text-gold mb-6 flex justify-center group-hover:scale-110 transition-transform duration-500">
+                  <div className="w-16 h-16 rounded-2xl bg-gold/5 flex items-center justify-center border border-gold/10 group-hover:border-gold/30 transition-all">
+                    {item.icon}
+                  </div>
+                </div>
+                <h4 className="font-bold mb-2 text-xl">{item.title}</h4>
+                <p className="text-sm text-gray-500 uppercase tracking-widest font-medium">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Gallery Section */}
+      <section id="gallery" className="py-24 px-6 bg-black/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-6">
+            <div>
+              <span className="text-gold uppercase tracking-[0.3em] text-sm mb-4 block">Visual Journey</span>
+              <h2 className="text-4xl md:text-5xl font-serif">Gallery</h2>
+            </div>
+            <a href={dynamicWhatsAppLink} className="px-8 py-3 border border-gold/30 text-gold hover:bg-gold hover:text-charcoal transition-all rounded-full text-sm font-bold uppercase tracking-widest">
+              View More on WhatsApp
+            </a>
+          </div>
+
+          <div className="gallery-grid">
+            {displayGallery.map((url, index) => (
+              <motion.div 
+                key={index}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                className="gallery-item rounded-2xl shadow-xl"
+              >
+                <img src={url} alt={`Gallery ${index + 1}`} referrerPolicy="no-referrer" />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Map Section */}
       <section id="location" className="py-24 px-6">
@@ -501,22 +574,42 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
 };
 
 const DashboardHome = () => {
-  const [stats, setStats] = useState({ rooms: 0, bookings: 0, revenue: 0 });
+  const [stats, setStats] = useState({ rooms: 0, bookingsToday: 0, revenue: 0 });
 
   useEffect(() => {
     const fetchStats = async () => {
       const roomsSnap = await getDocs(collection(db, 'rooms'));
       const bookingsSnap = await getDocs(collection(db, 'bookings'));
       
-      let rev = 0;
+      const today = new Date().toISOString().split('T')[0];
+      let bookingsTodayCount = 0;
+      let totalRev = 0;
+
+      // Create a map of room types to prices for revenue calculation
+      const roomPrices: Record<string, number> = {};
+      roomsSnap.docs.forEach(d => {
+        const data = d.data();
+        roomPrices[data.type] = data.price || 0;
+      });
+
       bookingsSnap.docs.forEach(d => {
-        if (d.data().status === 'confirmed') rev += 5000; // Mock revenue calculation
+        const data = d.data();
+        // Check if booking was created today
+        if (data.createdAt) {
+          const createdDate = data.createdAt.toDate().toISOString().split('T')[0];
+          if (createdDate === today) bookingsTodayCount++;
+        }
+        
+        // Calculate revenue for confirmed bookings
+        if (data.status === 'confirmed') {
+          totalRev += roomPrices[data.roomType] || 5000;
+        }
       });
 
       setStats({
         rooms: roomsSnap.size,
-        bookings: bookingsSnap.size,
-        revenue: rev
+        bookingsToday: bookingsTodayCount,
+        revenue: totalRev
       });
     };
     fetchStats();
@@ -528,8 +621,8 @@ const DashboardHome = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
           { label: 'Total Rooms', value: stats.rooms, icon: Bed, color: 'text-blue-400' },
-          { label: 'Total Bookings', value: stats.bookings, icon: BookOpen, color: 'text-gold' },
-          { label: 'Est. Revenue', value: `${stats.revenue.toLocaleString()} PKR`, icon: Award, color: 'text-green-400' },
+          { label: 'Bookings Today', value: stats.bookingsToday, icon: BookOpen, color: 'text-gold' },
+          { label: 'Total Revenue', value: `${stats.revenue.toLocaleString()} PKR`, icon: Award, color: 'text-green-400' },
         ].map((stat, i) => (
           <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-3xl">
             <stat.icon className={cn("w-10 h-10 mb-4", stat.color)} />
