@@ -71,9 +71,9 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidRoom(request.resource.data);
     }
 
-    // Bookings: Admin can read/write, Public can create
+    // Bookings: Publicly readable (as requested), Admin can write, Public can create
     match /bookings/{bookingId} {
-      allow read: if isAdmin();
+      allow read: if true;
       allow create: if isValidBooking(request.resource.data);
       allow update, delete: if isAdmin() && isValidBooking(request.resource.data);
     }

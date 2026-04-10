@@ -236,7 +236,10 @@ const LandingPage = () => {
     const unsubscribeAmenities = onSnapshot(qAmenities, (snapshot) => {
       const amenityData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setAmenities(amenityData.filter(a => a.isActive));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'amenities'));
+    }, (error) => {
+      console.error("Amenities fetch error:", error);
+      // Don't throw here to prevent component crash
+    });
 
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) setSettings(doc.data());
@@ -947,18 +950,52 @@ const AmenitiesManager = () => {
     }
   };
 
+  const seedAmenities = async () => {
+    const defaultAmenities = [
+      { title: "24/7 Electricity back-up", desc: "Full Backup Support", icon: "Zap", isActive: true },
+      { title: "Free Wi-Fi", desc: "High-Speed Internet", icon: "Wifi", isActive: true },
+      { title: "Secure Parking", desc: "Safe On-site Space", icon: "Car", isActive: true },
+      { title: "Restaurant", desc: "Delicious On-site Meals", icon: "Utensils", isActive: true },
+      { title: "24/7 Security", desc: "CCTV & Guarded", icon: "Shield", isActive: true },
+      { title: "Room Service", desc: "Available at Call", icon: "Coffee", isActive: true },
+      { title: "Quick Check-in", desc: "Seamless Experience", icon: "Clock", isActive: true },
+      { title: "Top Rated", desc: "9.7 Guest Rating", icon: "Award", isActive: true },
+    ];
+
+    try {
+      for (const amenity of defaultAmenities) {
+        // Check if already exists to avoid duplicates
+        const exists = amenities.find(a => a.title === amenity.title);
+        if (!exists) {
+          await addDoc(collection(db, 'amenities'), amenity);
+        }
+      }
+      alert("Amenities seeded successfully!");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'amenities');
+    }
+  };
+
   const icons = ["Zap", "Wifi", "Car", "Utensils", "Shield", "Coffee", "Clock", "Award", "Star"];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <h1 className="text-3xl font-serif">Amenities Manager</h1>
-        <button 
-          onClick={() => { setEditingAmenity(null); setFormData({ title: '', desc: '', icon: 'Star', isActive: true }); setIsModalOpen(true); }}
-          className="px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2"
-        >
-          <Plus size={18} /> Add Amenity
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={seedAmenities}
+            className="px-6 py-3 bg-white/5 text-gold border border-gold/30 font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2 hover:bg-gold/10 transition-all"
+          >
+            <Zap size={18} /> Seed Defaults
+          </button>
+          <button 
+            onClick={() => { setEditingAmenity(null); setFormData({ title: '', desc: '', icon: 'Star', isActive: true }); setIsModalOpen(true); }}
+            className="px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2"
+          >
+            <Plus size={18} /> Add Amenity
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
