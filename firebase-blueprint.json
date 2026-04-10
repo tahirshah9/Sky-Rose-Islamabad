@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "room": {
+      "title": "Room",
+      "description": "A room in the guest house",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "description": "Room type (e.g., Executive, Triple, Family)" },
+        "price": { "type": "number", "description": "Price in PKR" },
+        "capacity": { "type": "number", "description": "Number of guests" },
+        "isAvailable": { "type": "boolean", "description": "Availability status" },
+        "imageUrl": { "type": "string", "description": "URL of the room image" },
+        "description": { "type": "string", "description": "Brief description of the room" }
+      },
+      "required": ["type", "price", "capacity", "isAvailable"]
+    },
+    "booking": {
+      "title": "Booking",
+      "description": "A guest booking",
+      "type": "object",
+      "properties": {
+        "guestName": { "type": "string" },
+        "phone": { "type": "string" },
+        "checkIn": { "type": "string", "format": "date" },
+        "checkOut": { "type": "string", "format": "date" },
+        "roomType": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["guestName", "phone", "checkIn", "checkOut", "roomType", "status"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Global hotel settings",
+      "type": "object",
+      "properties": {
+        "whatsappNumber": { "type": "string" },
+        "bookingRating": { "type": "string" }
+      }
+    },
+    "gallery": {
+      "title": "Gallery",
+      "description": "Hotel gallery image",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": { "schema": "room", "description": "Collection of rooms" },
+    "/bookings/{bookingId}": { "schema": "booking", "description": "Collection of guest bookings" },
+    "/settings/global": { "schema": "settings", "description": "Global configuration document" },
+    "/gallery/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" }
+  }
+}

@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: rooms
+    // Fields:
+    //   - type: string (required)
+    //   - price: number (required)
+    //   - capacity: number (required)
+    //   - isAvailable: bool (required)
+    //   - imageUrl: string (optional)
+    //   - description: string (optional)
+    //
+    // Collection: bookings
+    // Fields:
+    //   - guestName: string (required)
+    //   - phone: string (required)
+    //   - checkIn: string (required, date format)
+    //   - checkOut: string (required, date format)
+    //   - roomType: string (required)
+    //   - status: string (required, enum: pending, confirmed, cancelled)
+    //   - createdAt: timestamp (required)
+    //
+    // Document: settings/global
+    // Fields:
+    //   - whatsappNumber: string
+    //   - bookingRating: string
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             request.auth.token.email == "shahtah5572345@gmail.com" && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['type', 'price', 'capacity', 'isAvailable']) &&
+             data.type is string && data.type.size() > 0 && data.type.size() < 100 &&
+             data.price is number && data.price >= 0 &&
+             data.capacity is number && data.capacity > 0 &&
+             data.isAvailable is bool;
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll(['guestName', 'phone', 'checkIn', 'checkOut', 'roomType', 'status']) &&
+             data.guestName is string && data.guestName.size() > 0 && data.guestName.size() < 100 &&
+             data.phone is string && data.phone.size() >= 7 && data.phone.size() < 20 &&
+             data.status in ['pending', 'confirmed', 'cancelled'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Rooms: Publicly readable, Admin can write
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidRoom(request.resource.data);
+    }
+
+    // Bookings: Admin can read/write, Public can create
+    match /bookings/{bookingId} {
+      allow read: if isAdmin();
+      allow create: if isValidBooking(request.resource.data);
+      allow update, delete: if isAdmin() && isValidBooking(request.resource.data);
+    }
+
+    // Settings: Publicly readable, Admin can write
+    match /settings/global {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Gallery: Publicly readable, Admin can write
+    match /gallery/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
