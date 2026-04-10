@@ -115,6 +115,14 @@ const ErrorBoundary = ({ children }: { children: React.ReactNode }) => {
 const BookingForm = ({ roomType, onClose }: { roomType: string, onClose: () => void }) => {
   const [formData, setFormData] = useState({ guestName: '', phone: '', checkIn: '', checkOut: '' });
   const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<any>({ whatsappNumber: WHATSAPP_NUMBER });
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) setSettings(doc.data());
+    });
+    return unsubscribe;
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +141,18 @@ const BookingForm = ({ roomType, onClose }: { roomType: string, onClose: () => v
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleWhatsAppBooking = () => {
+    const message = encodeURIComponent(
+      `Hello! I would like to book a room.\n\n` +
+      `Room: ${roomType}\n` +
+      `Name: ${formData.guestName}\n` +
+      `Phone: ${formData.phone}\n` +
+      `Check-In: ${formData.checkIn}\n` +
+      `Check-Out: ${formData.checkOut}`
+    );
+    window.open(`https://wa.me/${settings.whatsappNumber}?text=${message}`, '_blank');
   };
 
   return (
@@ -168,11 +188,18 @@ const BookingForm = ({ roomType, onClose }: { roomType: string, onClose: () => v
               />
             </div>
           </div>
-          <div className="flex gap-4 pt-4">
-            <button type="button" onClick={onClose} className="flex-1 py-4 bg-white/5 rounded-full font-bold uppercase tracking-widest text-xs">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-1 py-4 gold-gradient text-charcoal rounded-full font-bold uppercase tracking-widest text-xs flex items-center justify-center">
+          <div className="flex flex-col gap-3 pt-4">
+            <button type="submit" disabled={loading} className="w-full py-4 gold-gradient text-charcoal rounded-full font-bold uppercase tracking-widest text-xs flex items-center justify-center">
               {loading ? <Loader2 className="animate-spin" /> : "Request Booking"}
             </button>
+            <button 
+              type="button" 
+              onClick={handleWhatsAppBooking}
+              className="w-full py-4 bg-green-600 text-white rounded-full font-bold uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+            >
+              <Phone size={16} /> Book via WhatsApp
+            </button>
+            <button type="button" onClick={onClose} className="w-full py-4 bg-white/5 rounded-full font-bold uppercase tracking-widest text-xs">Cancel</button>
           </div>
         </form>
       </div>
@@ -185,6 +212,7 @@ const LandingPage = () => {
   const [scrolled, setScrolled] = useState(false);
   const [rooms, setRooms] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
+  const [amenities, setAmenities] = useState<any[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>({ whatsappNumber: WHATSAPP_NUMBER, bookingRating: '9.7/10' });
 
@@ -204,6 +232,12 @@ const LandingPage = () => {
       setGallery(galleryData);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
 
+    const qAmenities = query(collection(db, 'amenities'), orderBy('title', 'asc'));
+    const unsubscribeAmenities = onSnapshot(qAmenities, (snapshot) => {
+      const amenityData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setAmenities(amenityData.filter(a => a.isActive));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'amenities'));
+
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) setSettings(doc.data());
     });
@@ -212,6 +246,7 @@ const LandingPage = () => {
       window.removeEventListener('scroll', handleScroll);
       unsubscribeRooms();
       unsubscribeGallery();
+      unsubscribeAmenities();
       unsubscribeSettings();
     };
   }, []);
@@ -370,26 +405,25 @@ const LandingPage = () => {
             <h2 className="text-4xl md:text-5xl font-serif">World-Class Amenities</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { icon: <Zap size={32} />, title: "24/7 Electricity", desc: "Full Backup Support" },
-              { icon: <Wifi size={32} />, title: "Free Wi-Fi", desc: "High-Speed Internet" },
-              { icon: <Car size={32} />, title: "Secure Parking", desc: "Safe On-site Space" },
-              { icon: <Utensils size={32} />, title: "Restaurant", desc: "Delicious On-site Meals" },
-              { icon: <Shield size={32} />, title: "24/7 Security", desc: "CCTV & Guarded" },
-              { icon: <Coffee size={32} />, title: "Room Service", desc: "Available at Call" },
-              { icon: <Clock size={32} />, title: "Quick Check-in", desc: "Seamless Experience" },
-              { icon: <Award size={32} />, title: "Top Rated", desc: `${settings.bookingRating} Guest Rating` },
-            ].map((item, index) => (
-              <div key={index} className="p-8 bg-charcoal rounded-3xl border border-white/5 text-center group hover:border-gold/40 hover:bg-black/40 transition-all duration-500 shadow-lg">
-                <div className="text-gold mb-6 flex justify-center group-hover:scale-110 transition-transform duration-500">
-                  <div className="w-16 h-16 rounded-2xl bg-gold/5 flex items-center justify-center border border-gold/10 group-hover:border-gold/30 transition-all">
-                    {item.icon}
+            {amenities.length > 0 ? amenities.map((item, index) => {
+              const IconComponent = {
+                Zap, Wifi, Car, Utensils, Shield, Coffee, Clock, Award
+              }[item.icon] || Star;
+
+              return (
+                <div key={item.id} className="p-8 bg-charcoal rounded-3xl border border-white/5 text-center group hover:border-gold/40 hover:bg-black/40 transition-all duration-500 shadow-lg">
+                  <div className="text-gold mb-6 flex justify-center group-hover:scale-110 transition-transform duration-500">
+                    <div className="w-16 h-16 rounded-2xl bg-gold/5 flex items-center justify-center border border-gold/10 group-hover:border-gold/30 transition-all">
+                      <IconComponent size={32} />
+                    </div>
                   </div>
+                  <h4 className="font-bold mb-2 text-xl">{item.title}</h4>
+                  <p className="text-sm text-gray-500 uppercase tracking-widest font-medium">{item.desc}</p>
                 </div>
-                <h4 className="font-bold mb-2 text-xl">{item.title}</h4>
-                <p className="text-sm text-gray-500 uppercase tracking-widest font-medium">{item.desc}</p>
-              </div>
-            ))}
+              );
+            }) : (
+              <p className="col-span-full text-center text-gray-500">Loading amenities...</p>
+            )}
           </div>
         </div>
       </section>
@@ -543,6 +577,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
             { name: 'Dashboard', icon: LayoutDashboard, path: '/admin/dashboard' },
             { name: 'Rooms', icon: Bed, path: '/admin/rooms' },
             { name: 'Bookings', icon: BookOpen, path: '/admin/bookings' },
+            { name: 'Amenities', icon: Award, path: '/admin/amenities' },
             { name: 'Gallery', icon: ImageIcon, path: '/admin/gallery' },
             { name: 'Settings', icon: SettingsIcon, path: '/admin/settings' },
           ].map((item) => (
@@ -877,6 +912,117 @@ const GalleryManager = () => {
   );
 };
 
+const AmenitiesManager = () => {
+  const [amenities, setAmenities] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingAmenity, setEditingAmenity] = useState<any>(null);
+  const [formData, setFormData] = useState({ title: '', desc: '', icon: 'Star', isActive: true });
+
+  useEffect(() => {
+    const q = query(collection(db, 'amenities'), orderBy('title', 'asc'));
+    return onSnapshot(q, (snapshot) => {
+      setAmenities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingAmenity) {
+        await updateDoc(doc(db, 'amenities', editingAmenity.id), formData);
+      } else {
+        await addDoc(collection(db, 'amenities'), formData);
+      }
+      setIsModalOpen(false);
+      setEditingAmenity(null);
+      setFormData({ title: '', desc: '', icon: 'Star', isActive: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'amenities');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Delete this amenity?")) {
+      await deleteDoc(doc(db, 'amenities', id));
+    }
+  };
+
+  const icons = ["Zap", "Wifi", "Car", "Utensils", "Shield", "Coffee", "Clock", "Award", "Star"];
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-serif">Amenities Manager</h1>
+        <button 
+          onClick={() => { setEditingAmenity(null); setFormData({ title: '', desc: '', icon: 'Star', isActive: true }); setIsModalOpen(true); }}
+          className="px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2"
+        >
+          <Plus size={18} /> Add Amenity
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {amenities.map((amenity) => (
+          <div key={amenity.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl flex justify-between items-start">
+            <div>
+              <h3 className="text-xl font-bold mb-1">{amenity.title}</h3>
+              <p className="text-gray-500 text-sm mb-2">{amenity.desc}</p>
+              <span className={cn(
+                "px-2 py-1 rounded-md text-[10px] uppercase font-bold tracking-widest",
+                amenity.isActive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
+              )}>
+                {amenity.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setEditingAmenity(amenity); setFormData(amenity); setIsModalOpen(true); }} className="p-2 text-gold hover:bg-gold/10 rounded-lg"><Edit size={18} /></button>
+              <button onClick={() => handleDelete(amenity.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"><Trash2 size={18} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6">
+          <div className="bg-charcoal border border-white/10 p-8 rounded-[2rem] w-full max-w-md">
+            <h2 className="text-2xl font-serif mb-6 gold-text">{editingAmenity ? 'Edit' : 'Add'} Amenity</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input 
+                type="text" placeholder="Title" required 
+                value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+              />
+              <input 
+                type="text" placeholder="Description" required 
+                value={formData.desc} onChange={e => setFormData({...formData, desc: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+              />
+              <select 
+                value={formData.icon} onChange={e => setFormData({...formData, icon: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+              >
+                {icons.map(icon => <option key={icon} value={icon} className="bg-charcoal">{icon}</option>)}
+              </select>
+              <label className="flex items-center gap-3 cursor-pointer p-2">
+                <input 
+                  type="checkbox" checked={formData.isActive} 
+                  onChange={e => setFormData({...formData, isActive: e.target.checked})}
+                  className="w-5 h-5 accent-gold"
+                />
+                <span className="text-sm">Active on Website</span>
+              </label>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 bg-white/5 rounded-full font-bold uppercase tracking-widest text-xs">Cancel</button>
+                <button type="submit" className="flex-1 py-4 gold-gradient text-charcoal rounded-full font-bold uppercase tracking-widest text-xs">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SettingsManager = () => {
   const [settings, setSettings] = useState({ whatsappNumber: '', bookingRating: '' });
   const [loading, setLoading] = useState(false);
@@ -953,6 +1099,7 @@ export default function App() {
           <Route path="/admin/dashboard" element={<AdminLayout><DashboardHome /></AdminLayout>} />
           <Route path="/admin/rooms" element={<AdminLayout><RoomsManager /></AdminLayout>} />
           <Route path="/admin/bookings" element={<AdminLayout><BookingLog /></AdminLayout>} />
+          <Route path="/admin/amenities" element={<AdminLayout><AmenitiesManager /></AdminLayout>} />
           <Route path="/admin/gallery" element={<AdminLayout><GalleryManager /></AdminLayout>} />
           <Route path="/admin/settings" element={<AdminLayout><SettingsManager /></AdminLayout>} />
           <Route path="*" element={<Navigate to="/" />} />

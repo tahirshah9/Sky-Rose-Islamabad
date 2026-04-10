@@ -47,12 +47,25 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["url"]
+    },
+    "amenity": {
+      "title": "Amenity",
+      "description": "Hotel amenity",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "desc": { "type": "string" },
+        "icon": { "type": "string", "description": "Lucide icon name" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["title", "desc", "icon", "isActive"]
     }
   },
   "firestore": {
     "/rooms/{roomId}": { "schema": "room", "description": "Collection of rooms" },
     "/bookings/{bookingId}": { "schema": "booking", "description": "Collection of guest bookings" },
     "/settings/global": { "schema": "settings", "description": "Global configuration document" },
-    "/gallery/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" }
+    "/gallery/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" },
+    "/amenities/{amenityId}": { "schema": "amenity", "description": "Collection of hotel amenities" }
   }
 }

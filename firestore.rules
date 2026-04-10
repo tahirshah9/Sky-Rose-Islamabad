@@ -90,6 +90,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Amenities: Publicly readable, Admin can write
+    match /amenities/{amenityId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
