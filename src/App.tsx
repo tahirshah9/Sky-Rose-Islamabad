@@ -62,7 +62,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // --- Constants ---
-const ADMIN_EMAIL = "shahtah5572345@gmail.com";
+const ADMIN_EMAIL = "hospitalityhub164@gmail.com";
 const WHATSAPP_NUMBER = "923331574046";
 const PRE_FILLED_MESSAGE = encodeURIComponent("Hello! I would like to book a room at Sky Rose Guest House.");
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${PRE_FILLED_MESSAGE}`;
