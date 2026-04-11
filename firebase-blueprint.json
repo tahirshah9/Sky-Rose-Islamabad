@@ -79,7 +79,7 @@
     "/rooms/{roomId}": { "schema": "room", "description": "Collection of rooms" },
     "/bookings/{bookingId}": { "schema": "booking", "description": "Collection of guest bookings" },
     "/settings/global": { "schema": "settings", "description": "Global configuration document" },
-    "/gallery/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" },
+    "/gallery_images/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" },
     "/amenities/{amenityId}": { "schema": "amenity", "description": "Collection of hotel amenities" },
     "/reviews/{reviewId}": { "schema": "review", "description": "Collection of guest reviews" }
   }

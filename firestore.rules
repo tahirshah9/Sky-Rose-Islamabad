@@ -86,7 +86,7 @@ service cloud.firestore {
     }
 
     // Gallery: Publicly readable, Admin can write
-    match /gallery/{imageId} {
+    match /gallery_images/{imageId} {
       allow read: if true;
       allow write: if isAdmin();
     }

@@ -26,7 +26,8 @@ import {
   orderBy,
   getDocs
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import imageCompression from 'browser-image-compression';
 import { auth, db, storage } from './firebase';
 import { handleFirestoreError, OperationType, cn } from './utils';
 import { 
@@ -64,6 +65,30 @@ import { motion, AnimatePresence } from 'motion/react';
 // --- Constants ---
 const ADMIN_EMAILS = ["hospitalityhub164@gmail.com", "shahtah5572345@gmail.com"];
 const WHATSAPP_NUMBER = "923331574046";
+
+// --- Helpers ---
+const compressImage = async (file: File) => {
+  const options = {
+    maxSizeMB: 0.5,
+    maxWidthOrHeight: 1920,
+    useWebWorker: true,
+  };
+  try {
+    return await imageCompression(file, options);
+  } catch (error) {
+    console.error("Compression error:", error);
+    return file;
+  }
+};
+
+const ProgressBar = ({ progress }: { progress: number }) => (
+  <div className="w-full bg-white/5 rounded-full h-1.5 mt-2 overflow-hidden">
+    <div 
+      className="bg-gold h-full transition-all duration-300" 
+      style={{ width: `${progress}%` }}
+    />
+  </div>
+);
 const PRE_FILLED_MESSAGE = encodeURIComponent("Hello! I would like to book a room at Sky Rose Guest House.");
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${PRE_FILLED_MESSAGE}`;
 const GOOGLE_MAPS_KEY = "AIzaSyD1-8j7p8zwoW2ncOYyvyxMidMpqaDTVu8";
@@ -227,11 +252,11 @@ const LandingPage = () => {
       setRooms(roomData);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'rooms'));
 
-    const qGallery = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+    const qGallery = query(collection(db, 'gallery_images'), orderBy('createdAt', 'desc'));
     const unsubscribeGallery = onSnapshot(qGallery, (snapshot) => {
       const galleryData = snapshot.docs.map(doc => doc.data().url);
       setGallery(galleryData);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery'));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'gallery_images'));
 
     const qAmenities = query(collection(db, 'amenities'), orderBy('title', 'asc'));
     const unsubscribeAmenities = onSnapshot(qAmenities, (snapshot) => {
@@ -809,7 +834,7 @@ const RoomsManager = () => {
   const [editingRoom, setEditingRoom] = useState<any>(null);
   const [formData, setFormData] = useState({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] as string[] });
   const [uploading, setUploading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     const q = query(collection(db, 'rooms'), orderBy('price', 'asc'));
@@ -818,14 +843,29 @@ const RoomsManager = () => {
     });
   }, []);
 
-  const handleUpload = async (roomId: string) => {
-    if (!selectedFiles) return [];
+  const handleUpload = async (roomId: string, files: FileList) => {
     const urls: string[] = [];
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      const storageRef = ref(storage, `rooms/${roomId}/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
+    for (let i = 0; i < files.length; i++) {
+      const originalFile = files[i];
+      const compressedFile = await compressImage(originalFile);
+      const fileName = `${Date.now()}_${originalFile.name}`;
+      const storageRef = ref(storage, `rooms/${roomId}/${fileName}`);
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+      
+      const url = await new Promise<string>((resolve, reject) => {
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setUploadProgress(prev => ({ ...prev, [originalFile.name]: progress }));
+          }, 
+          (error) => reject(error), 
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(downloadURL);
+          }
+        );
+      });
       urls.push(url);
     }
     return urls;
@@ -833,13 +873,17 @@ const RoomsManager = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const fileInput = (e.target as any).elements.roomImages;
+    const files = fileInput?.files as FileList;
+    
     setUploading(true);
+    setUploadProgress({});
     try {
       let roomId = editingRoom?.id;
       let currentImageUrls = formData.imageUrls || [];
 
       if (editingRoom) {
-        const newUrls = await handleUpload(roomId);
+        const newUrls = await handleUpload(roomId, files);
         await updateDoc(doc(db, 'rooms', roomId), {
           ...formData,
           imageUrls: [...currentImageUrls, ...newUrls],
@@ -848,7 +892,7 @@ const RoomsManager = () => {
       } else {
         const docRef = await addDoc(collection(db, 'rooms'), { ...formData, imageUrls: [] });
         roomId = docRef.id;
-        const newUrls = await handleUpload(roomId);
+        const newUrls = await handleUpload(roomId, files);
         await updateDoc(doc(db, 'rooms', roomId), {
           imageUrls: newUrls,
           imageUrl: newUrls[0] || ''
@@ -857,7 +901,7 @@ const RoomsManager = () => {
       setIsModalOpen(false);
       setEditingRoom(null);
       setFormData({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] });
-      setSelectedFiles(null);
+      setUploadProgress({});
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'rooms');
     } finally {
@@ -924,7 +968,7 @@ const RoomsManager = () => {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 overflow-y-auto">
           <div className="bg-charcoal border border-white/10 p-8 rounded-[2rem] w-full max-w-2xl my-8">
-            <h2 className="text-2xl font-serif mb-6">{editingRoom ? "Edit Room" : "Add New Room"}</h2>
+            <h2 className="text-2xl font-serif mb-6 gold-text">{editingRoom ? "Edit Room" : "Add New Room"}</h2>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <input 
@@ -958,11 +1002,24 @@ const RoomsManager = () => {
               <div>
                 <label className="text-xs uppercase tracking-widest text-gray-500 mb-3 block">Upload Room Pictures</label>
                 <input 
-                  type="file" multiple accept="image/*"
-                  onChange={e => setSelectedFiles(e.target.files)}
+                  type="file" name="roomImages" multiple accept="image/*"
                   className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-gold/10 file:text-gold hover:file:bg-gold/20 cursor-pointer"
                 />
                 
+                {Object.keys(uploadProgress).length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {Object.entries(uploadProgress).map(([name, progress]) => (
+                      <div key={name} className="text-[10px] text-gray-500">
+                        <div className="flex justify-between mb-1">
+                          <span className="truncate max-w-[200px]">{name}</span>
+                          <span>{Math.round(progress as number)}%</span>
+                        </div>
+                        <ProgressBar progress={progress as number} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {formData.imageUrls && formData.imageUrls.length > 0 && (
                   <div className="grid grid-cols-4 gap-4 mt-4">
                     {formData.imageUrls.map((url, idx) => (
@@ -1068,37 +1125,62 @@ const BookingLog = () => {
 const GalleryManager = () => {
   const [images, setImages] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
-    const q = query(collection(db, 'gallery'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'gallery_images'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
       setImages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
   }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setUploading(true);
+    setUploadProgress({});
+    
     try {
-      const storageRef = ref(storage, `gallery/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      await addDoc(collection(db, 'gallery'), {
-        url,
-        createdAt: serverTimestamp()
-      });
+      for (let i = 0; i < files.length; i++) {
+        const originalFile = files[i];
+        const compressedFile = await compressImage(originalFile);
+        const fileName = `${Date.now()}_${originalFile.name}`;
+        const storageRef = ref(storage, `gallery/${fileName}`);
+        
+        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+        
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed', 
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(prev => ({ ...prev, [originalFile.name]: progress }));
+            }, 
+            (error) => reject(error), 
+            async () => {
+              const url = await getDownloadURL(uploadTask.snapshot.ref);
+              await addDoc(collection(db, 'gallery_images'), {
+                url,
+                createdAt: serverTimestamp()
+              });
+              resolve();
+            }
+          );
+        });
+      }
+      setUploadProgress({});
     } catch (err) {
       console.error(err);
+      alert("Upload failed. Please try again.");
     } finally {
       setUploading(false);
+      e.target.value = ''; // Clear input
     }
   };
 
   const handleDelete = async (id: string) => {
     if (window.confirm("Delete this image?")) {
-      await deleteDoc(doc(db, 'gallery', id));
+      await deleteDoc(doc(db, 'gallery_images', id));
     }
   };
 
@@ -1106,19 +1188,46 @@ const GalleryManager = () => {
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-serif">Gallery Manager</h1>
-        <label className="cursor-pointer px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2">
-          {uploading ? <Loader2 className="animate-spin" /> : <><Plus size={18} /> Upload Photo</>}
-          <input type="file" className="hidden" onChange={handleUpload} disabled={uploading} accept="image/*" />
+        <label className={cn(
+          "cursor-pointer px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center gap-2 transition-opacity",
+          uploading ? "opacity-50 cursor-not-allowed" : "hover:shadow-lg"
+        )}>
+          {uploading ? <Loader2 className="animate-spin" /> : <><Plus size={18} /> Upload Photos</>}
+          <input 
+            type="file" 
+            className="hidden" 
+            onChange={handleUpload} 
+            disabled={uploading} 
+            accept="image/*" 
+            multiple 
+          />
         </label>
       </div>
+
+      {Object.keys(uploadProgress).length > 0 && (
+        <div className="mb-8 bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
+          <h3 className="text-xs uppercase tracking-widest text-gray-500 font-bold">Upload Progress</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(uploadProgress).map(([name, progress]) => (
+              <div key={name} className="text-[10px] text-gray-500">
+                <div className="flex justify-between mb-1">
+                  <span className="truncate max-w-[200px]">{name}</span>
+                  <span>{Math.round(progress as number)}%</span>
+                </div>
+                <ProgressBar progress={progress as number} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {images.map((img) => (
           <div key={img.id} className="relative group aspect-square rounded-2xl overflow-hidden border border-white/10">
-            <img src={img.url} alt="Gallery" className="w-full h-full object-cover" />
+            <img src={img.url} alt="Gallery" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             <button 
               onClick={() => handleDelete(img.id)}
-              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
             >
               <Trash2 size={16} />
             </button>
