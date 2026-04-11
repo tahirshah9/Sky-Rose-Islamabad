@@ -81,12 +81,53 @@ const compressImage = async (file: File) => {
   }
 };
 
-const ProgressBar = ({ progress }: { progress: number }) => (
-  <div className="w-full bg-white/5 rounded-full h-1.5 mt-2 overflow-hidden">
-    <div 
-      className="bg-gold h-full transition-all duration-300" 
-      style={{ width: `${progress}%` }}
-    />
+const uploadImage = async (
+  file: File, 
+  path: string, 
+  onProgress: (progress: number, status: string) => void
+): Promise<string> => {
+  onProgress(0, 'Compressing...');
+  const compressedFile = await compressImage(file);
+  
+  onProgress(0, 'Uploading...');
+  const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
+  const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+
+  return new Promise((resolve, reject) => {
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        onProgress(progress, 'Uploading...');
+      },
+      (error) => {
+        console.error("Upload error:", error);
+        reject(error);
+      },
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        onProgress(100, 'Complete');
+        resolve(downloadURL);
+      }
+    );
+  });
+};
+
+const ProgressBar = ({ progress, status }: { progress: number, status?: string }) => (
+  <div className="w-full mt-2">
+    <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+      <span className="font-medium text-gold/80">{status || 'Processing'}</span>
+      <span>{Math.round(progress)}%</span>
+    </div>
+    <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden border border-white/5">
+      <div 
+        className={cn(
+          "h-full transition-all duration-300",
+          progress === 100 ? "bg-green-500" : "bg-gold"
+        )} 
+        style={{ width: `${progress}%` }}
+      />
+    </div>
   </div>
 );
 const PRE_FILLED_MESSAGE = encodeURIComponent("Hello! I would like to book a room at Sky Rose Guest House.");
@@ -834,7 +875,7 @@ const RoomsManager = () => {
   const [editingRoom, setEditingRoom] = useState<any>(null);
   const [formData, setFormData] = useState({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] as string[] });
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: { progress: number, status: string } }>({});
 
   useEffect(() => {
     const q = query(collection(db, 'rooms'), orderBy('price', 'asc'));
@@ -844,29 +885,33 @@ const RoomsManager = () => {
   }, []);
 
   const handleUpload = async (roomId: string, files: FileList) => {
+    // Initialize progress for all files
+    const initialProgress: any = {};
+    for (let i = 0; i < files.length; i++) {
+      initialProgress[files[i].name] = { progress: 0, status: 'Waiting...' };
+    }
+    setUploadProgress(prev => ({ ...prev, ...initialProgress }));
+
     const urls: string[] = [];
     for (let i = 0; i < files.length; i++) {
-      const originalFile = files[i];
-      const compressedFile = await compressImage(originalFile);
-      const fileName = `${Date.now()}_${originalFile.name}`;
-      const storageRef = ref(storage, `rooms/${roomId}/${fileName}`);
-      
-      const uploadTask = uploadBytesResumable(storageRef, compressedFile);
-      
-      const url = await new Promise<string>((resolve, reject) => {
-        uploadTask.on('state_changed', 
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            setUploadProgress(prev => ({ ...prev, [originalFile.name]: progress }));
-          }, 
-          (error) => reject(error), 
-          async () => {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(downloadURL);
-          }
+      const file = files[i];
+      try {
+        const url = await uploadImage(
+          file, 
+          `rooms/${roomId}`, 
+          (progress, status) => setUploadProgress(prev => ({ 
+            ...prev, 
+            [file.name]: { progress, status } 
+          }))
         );
-      });
-      urls.push(url);
+        urls.push(url);
+      } catch (err) {
+        console.error(`Failed to upload ${file.name}:`, err);
+        setUploadProgress(prev => ({ 
+          ...prev, 
+          [file.name]: { progress: 0, status: 'Failed' } 
+        }));
+      }
     }
     return urls;
   };
@@ -1007,14 +1052,13 @@ const RoomsManager = () => {
                 />
                 
                 {Object.keys(uploadProgress).length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    {Object.entries(uploadProgress).map(([name, progress]) => (
-                      <div key={name} className="text-[10px] text-gray-500">
-                        <div className="flex justify-between mb-1">
-                          <span className="truncate max-w-[200px]">{name}</span>
-                          <span>{Math.round(progress as number)}%</span>
+                  <div className="mt-4 space-y-3">
+                    {Object.entries(uploadProgress).map(([name, data]) => (
+                      <div key={name} className="bg-white/5 p-3 rounded-xl border border-white/5">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] text-gray-400 truncate max-w-[180px]">{name}</span>
                         </div>
-                        <ProgressBar progress={progress as number} />
+                        <ProgressBar progress={(data as any).progress} status={(data as any).status} />
                       </div>
                     ))}
                   </div>
@@ -1125,7 +1169,7 @@ const BookingLog = () => {
 const GalleryManager = () => {
   const [images, setImages] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: { progress: number, status: string } }>({});
 
   useEffect(() => {
     const q = query(collection(db, 'gallery_images'), orderBy('createdAt', 'desc'));
@@ -1139,39 +1183,36 @@ const GalleryManager = () => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
-    setUploadProgress({});
+    
+    // Initialize progress
+    const initialProgress: any = {};
+    for (let i = 0; i < files.length; i++) {
+      initialProgress[files[i].name] = { progress: 0, status: 'Waiting...' };
+    }
+    setUploadProgress(initialProgress);
     
     try {
       for (let i = 0; i < files.length; i++) {
-        const originalFile = files[i];
-        const compressedFile = await compressImage(originalFile);
-        const fileName = `${Date.now()}_${originalFile.name}`;
-        const storageRef = ref(storage, `gallery/${fileName}`);
+        const file = files[i];
+        const url = await uploadImage(
+          file, 
+          'gallery', 
+          (progress, status) => setUploadProgress(prev => ({ 
+            ...prev, 
+            [file.name]: { progress, status } 
+          }))
+        );
         
-        const uploadTask = uploadBytesResumable(storageRef, compressedFile);
-        
-        await new Promise<void>((resolve, reject) => {
-          uploadTask.on('state_changed', 
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setUploadProgress(prev => ({ ...prev, [originalFile.name]: progress }));
-            }, 
-            (error) => reject(error), 
-            async () => {
-              const url = await getDownloadURL(uploadTask.snapshot.ref);
-              await addDoc(collection(db, 'gallery_images'), {
-                url,
-                createdAt: serverTimestamp()
-              });
-              resolve();
-            }
-          );
+        await addDoc(collection(db, 'gallery_images'), {
+          url,
+          createdAt: serverTimestamp()
         });
       }
-      setUploadProgress({});
+      // Clear progress after a short delay
+      setTimeout(() => setUploadProgress({}), 2000);
     } catch (err) {
       console.error(err);
-      alert("Upload failed. Please try again.");
+      alert("Upload failed. Please check your internet connection and try again.");
     } finally {
       setUploading(false);
       e.target.value = ''; // Clear input
@@ -1208,13 +1249,12 @@ const GalleryManager = () => {
         <div className="mb-8 bg-white/5 border border-white/10 p-6 rounded-3xl space-y-4">
           <h3 className="text-xs uppercase tracking-widest text-gray-500 font-bold">Upload Progress</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(uploadProgress).map(([name, progress]) => (
-              <div key={name} className="text-[10px] text-gray-500">
-                <div className="flex justify-between mb-1">
-                  <span className="truncate max-w-[200px]">{name}</span>
-                  <span>{Math.round(progress as number)}%</span>
+            {Object.entries(uploadProgress).map(([name, data]) => (
+              <div key={name} className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-[10px] text-gray-400 truncate max-w-[200px]">{name}</span>
                 </div>
-                <ProgressBar progress={progress as number} />
+                <ProgressBar progress={(data as any).progress} status={(data as any).status} />
               </div>
             ))}
           </div>
