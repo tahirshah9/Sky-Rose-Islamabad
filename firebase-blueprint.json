@@ -9,7 +9,8 @@
         "price": { "type": "number", "description": "Price in PKR" },
         "capacity": { "type": "number", "description": "Number of guests" },
         "isAvailable": { "type": "boolean", "description": "Availability status" },
-        "imageUrl": { "type": "string", "description": "URL of the room image" },
+        "imageUrl": { "type": "string", "description": "URL of the primary room image" },
+        "imageUrls": { "type": "array", "items": { "type": "string" }, "description": "Array of room image URLs" },
         "description": { "type": "string", "description": "Brief description of the room" }
       },
       "required": ["type", "price", "capacity", "isAvailable"]
@@ -59,6 +60,19 @@
         "isActive": { "type": "boolean" }
       },
       "required": ["title", "desc", "icon", "isActive"]
+    },
+    "review": {
+      "title": "Review",
+      "description": "Guest testimonial",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["name", "rating", "comment", "isActive"]
     }
   },
   "firestore": {
@@ -66,6 +80,7 @@
     "/bookings/{bookingId}": { "schema": "booking", "description": "Collection of guest bookings" },
     "/settings/global": { "schema": "settings", "description": "Global configuration document" },
     "/gallery/{imageId}": { "schema": "gallery", "description": "Collection of gallery images" },
-    "/amenities/{amenityId}": { "schema": "amenity", "description": "Collection of hotel amenities" }
+    "/amenities/{amenityId}": { "schema": "amenity", "description": "Collection of hotel amenities" },
+    "/reviews/{reviewId}": { "schema": "review", "description": "Collection of guest reviews" }
   }
 }

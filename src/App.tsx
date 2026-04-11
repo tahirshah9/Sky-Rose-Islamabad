@@ -213,7 +213,8 @@ const LandingPage = () => {
   const [rooms, setRooms] = useState<any[]>([]);
   const [gallery, setGallery] = useState<any[]>([]);
   const [amenities, setAmenities] = useState<any[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [settings, setSettings] = useState<any>({ whatsappNumber: WHATSAPP_NUMBER, bookingRating: '9.7/10' });
 
   useEffect(() => {
@@ -238,8 +239,13 @@ const LandingPage = () => {
       setAmenities(amenityData.filter(a => a.isActive));
     }, (error) => {
       console.error("Amenities fetch error:", error);
-      // Don't throw here to prevent component crash
     });
+
+    const qReviews = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
+    const unsubscribeReviews = onSnapshot(qReviews, (snapshot) => {
+      const reviewData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      setReviews(reviewData.filter(r => r.isActive));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'reviews'));
 
     const unsubscribeSettings = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
       if (doc.exists()) setSettings(doc.data());
@@ -250,6 +256,7 @@ const LandingPage = () => {
       unsubscribeRooms();
       unsubscribeGallery();
       unsubscribeAmenities();
+      unsubscribeReviews();
       unsubscribeSettings();
     };
   }, []);
@@ -373,24 +380,21 @@ const LandingPage = () => {
           <div className="grid md:grid-cols-3 gap-8">
             {rooms.map((room) => (
               <motion.div key={room.id} whileHover={{ y: -10 }} className="bg-charcoal rounded-3xl overflow-hidden border border-white/5 group shadow-xl">
-                <div className="h-72 overflow-hidden">
+                <div className="h-72 overflow-hidden relative">
                   <img src={room.imageUrl || IMAGES.hero} alt={room.type} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" referrerPolicy="no-referrer" />
+                  <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                    <span className="text-gold font-bold text-sm">{room.price.toLocaleString()} PKR</span>
+                  </div>
                 </div>
                 <div className="p-8">
                   <h3 className="text-2xl font-serif mb-4">{room.type}</h3>
-                  <p className="text-gray-500 text-sm mb-6 font-light">{room.description || "A luxurious sanctuary featuring premium linens and sophisticated design."}</p>
-                  <div className="flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="text-gray-500 text-xs uppercase tracking-widest mb-1">Starting from</span>
-                      <span className="gold-text font-serif text-2xl">{room.price.toLocaleString()} PKR</span>
-                    </div>
-                    <button 
-                      onClick={() => setSelectedRoom(room.type)}
-                      className="w-12 h-12 rounded-full border border-gold/30 flex items-center justify-center text-gold hover:bg-gold hover:text-charcoal transition-all shadow-lg"
-                    >
-                      <Plus size={24} />
-                    </button>
-                  </div>
+                  <p className="text-gray-500 text-sm mb-6 font-light line-clamp-2">{room.description || "A luxurious sanctuary featuring premium linens and sophisticated design."}</p>
+                  <button 
+                    onClick={() => setSelectedRoom(room)}
+                    className="w-full py-4 border border-gold/30 rounded-full text-gold font-bold uppercase tracking-widest text-xs hover:bg-gold hover:text-charcoal transition-all shadow-lg"
+                  >
+                    View Details
+                  </button>
                 </div>
               </motion.div>
             ))}
@@ -398,7 +402,132 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {selectedRoom && <BookingForm roomType={selectedRoom} onClose={() => setSelectedRoom(null)} />}
+      {/* Reviews Section */}
+      <section id="reviews" className="py-24 px-6 bg-black/10">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="text-gold uppercase tracking-[0.3em] text-sm mb-4 block">Testimonials</span>
+            <h2 className="text-4xl md:text-5xl font-serif">Guest Experiences</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {reviews.length > 0 ? reviews.map((review) => (
+              <div key={review.id} className="bg-white/5 border border-white/10 p-10 rounded-[2.5rem] relative group hover:border-gold/30 transition-all duration-500">
+                <div className="flex text-gold mb-6">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={16} fill={i < review.rating ? "currentColor" : "none"} />
+                  ))}
+                </div>
+                <p className="text-gray-300 italic mb-8 leading-relaxed">"{review.comment}"</p>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full gold-gradient flex items-center justify-center text-charcoal font-bold">
+                    {review.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-lg">{review.name}</h4>
+                    <p className="text-xs text-gray-500 uppercase tracking-widest">Verified Guest</p>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <p className="col-span-full text-center text-gray-500">No reviews yet. Be our first guest!</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Room Detail Modal */}
+      <AnimatePresence>
+        {selectedRoom && typeof selectedRoom === 'object' && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/95 backdrop-blur-sm overflow-y-auto">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-charcoal border border-white/10 rounded-[3rem] w-full max-w-5xl overflow-hidden my-8"
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-2">
+                <div className="h-[400px] lg:h-full bg-black/40 relative">
+                  <img 
+                    src={selectedRoom.imageUrl || IMAGES.hero} 
+                    alt={selectedRoom.type} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                  {selectedRoom.imageUrls && selectedRoom.imageUrls.length > 1 && (
+                    <div className="absolute bottom-6 left-6 right-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      {selectedRoom.imageUrls.map((url: string, idx: number) => (
+                        <button 
+                          key={idx} 
+                          onClick={() => setSelectedRoom({...selectedRoom, imageUrl: url})}
+                          className={cn(
+                            "w-20 h-20 rounded-xl overflow-hidden border-2 transition-all flex-shrink-0",
+                            selectedRoom.imageUrl === url ? "border-gold scale-105" : "border-transparent opacity-60"
+                          )}
+                        >
+                          <img src={url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="p-10 lg:p-16 flex flex-col">
+                  <div className="flex justify-between items-start mb-8">
+                    <div>
+                      <h2 className="text-4xl font-serif mb-2">{selectedRoom.type}</h2>
+                      <p className="text-gold font-bold text-xl">{selectedRoom.price.toLocaleString()} PKR <span className="text-xs text-gray-500 uppercase">/ Night</span></p>
+                    </div>
+                    <button onClick={() => setSelectedRoom(null)} className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+                      <X size={24} />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-6 mb-10">
+                    <p className="text-gray-400 leading-relaxed">{selectedRoom.description || "Our suites offer a perfect blend of elegance and functionality, ensuring a restful stay for all our guests."}</p>
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center text-gold"><Bed size={20} /></div>
+                        <span className="text-sm font-medium">{selectedRoom.capacity} Guests</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center text-gold"><Shield size={20} /></div>
+                        <span className="text-sm font-medium">Secure Stay</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto flex flex-col gap-4">
+                    <button 
+                      onClick={() => {
+                        const type = selectedRoom.type;
+                        setSelectedRoom(type); // Switch to string to open BookingForm
+                      }}
+                      className="w-full py-5 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-[0.2em] text-xs shadow-xl shadow-gold/10"
+                    >
+                      Book This Room
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const message = encodeURIComponent(`Hello! I'm interested in booking the ${selectedRoom.type}.`);
+                        window.open(`https://wa.me/${settings.whatsappNumber}?text=${message}`, '_blank');
+                      }}
+                      className="w-full py-5 border border-white/10 rounded-full font-bold uppercase tracking-[0.2em] text-xs hover:bg-white/5 transition-all"
+                    >
+                      Inquire via WhatsApp
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Booking Form Modal */}
+      <AnimatePresence>
+        {selectedRoom && typeof selectedRoom === 'string' && (
+          <BookingForm roomType={selectedRoom} onClose={() => setSelectedRoom(null)} />
+        )}
+      </AnimatePresence>
 
       {/* Amenities Section */}
       <section id="amenities" className="py-24 px-6">
@@ -581,6 +710,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
             { name: 'Rooms', icon: Bed, path: '/admin/rooms' },
             { name: 'Bookings', icon: BookOpen, path: '/admin/bookings' },
             { name: 'Amenities', icon: Award, path: '/admin/amenities' },
+            { name: 'Reviews', icon: Star, path: '/admin/reviews' },
             { name: 'Gallery', icon: ImageIcon, path: '/admin/gallery' },
             { name: 'Settings', icon: SettingsIcon, path: '/admin/settings' },
           ].map((item) => (
@@ -677,7 +807,9 @@ const RoomsManager = () => {
   const [rooms, setRooms] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<any>(null);
-  const [formData, setFormData] = useState({ type: '', price: 0, capacity: 1, isAvailable: true, description: '' });
+  const [formData, setFormData] = useState({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] as string[] });
+  const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'rooms'), orderBy('price', 'asc'));
@@ -686,19 +818,50 @@ const RoomsManager = () => {
     });
   }, []);
 
+  const handleUpload = async (roomId: string) => {
+    if (!selectedFiles) return [];
+    const urls: string[] = [];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const storageRef = ref(storage, `rooms/${roomId}/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      urls.push(url);
+    }
+    return urls;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setUploading(true);
     try {
+      let roomId = editingRoom?.id;
+      let currentImageUrls = formData.imageUrls || [];
+
       if (editingRoom) {
-        await updateDoc(doc(db, 'rooms', editingRoom.id), formData);
+        const newUrls = await handleUpload(roomId);
+        await updateDoc(doc(db, 'rooms', roomId), {
+          ...formData,
+          imageUrls: [...currentImageUrls, ...newUrls],
+          imageUrl: currentImageUrls[0] || newUrls[0] || ''
+        });
       } else {
-        await addDoc(collection(db, 'rooms'), formData);
+        const docRef = await addDoc(collection(db, 'rooms'), { ...formData, imageUrls: [] });
+        roomId = docRef.id;
+        const newUrls = await handleUpload(roomId);
+        await updateDoc(doc(db, 'rooms', roomId), {
+          imageUrls: newUrls,
+          imageUrl: newUrls[0] || ''
+        });
       }
       setIsModalOpen(false);
       setEditingRoom(null);
-      setFormData({ type: '', price: 0, capacity: 1, isAvailable: true, description: '' });
+      setFormData({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] });
+      setSelectedFiles(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'rooms');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -708,12 +871,23 @@ const RoomsManager = () => {
     }
   };
 
+  const removeImage = async (index: number) => {
+    const newUrls = formData.imageUrls.filter((_, i) => i !== index);
+    setFormData({ ...formData, imageUrls: newUrls });
+    if (editingRoom) {
+      await updateDoc(doc(db, 'rooms', editingRoom.id), { 
+        imageUrls: newUrls,
+        imageUrl: newUrls[0] || ''
+      });
+    }
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-serif">Rooms Manager</h1>
         <button 
-          onClick={() => { setEditingRoom(null); setFormData({ type: '', price: 0, capacity: 1, isAvailable: true, description: '' }); setIsModalOpen(true); }}
+          onClick={() => { setEditingRoom(null); setFormData({ type: '', price: 0, capacity: 1, isAvailable: true, description: '', imageUrls: [] }); setIsModalOpen(true); }}
           className="flex items-center gap-2 px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm"
         >
           <Plus size={18} /> Add Room
@@ -722,55 +896,95 @@ const RoomsManager = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {rooms.map((room) => (
-          <div key={room.id} className="bg-white/5 border border-white/10 rounded-3xl p-6">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-xl font-serif">{room.type}</h3>
-              <div className="flex gap-2">
-                <button onClick={() => { setEditingRoom(room); setFormData(room); setIsModalOpen(true); }} className="p-2 hover:text-gold"><Edit size={18} /></button>
-                <button onClick={() => handleDelete(room.id)} className="p-2 hover:text-red-500"><Trash2 size={18} /></button>
+          <div key={room.id} className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden group">
+            <div className="h-48 overflow-hidden relative">
+              <img 
+                src={room.imageUrl || "https://picsum.photos/seed/room/800/600"} 
+                alt={room.type} 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute top-4 right-4 flex gap-2">
+                <button onClick={() => { setEditingRoom(room); setFormData(room); setIsModalOpen(true); }} className="p-2 bg-black/60 text-gold rounded-full hover:bg-gold hover:text-charcoal transition-colors"><Edit size={16} /></button>
+                <button onClick={() => handleDelete(room.id)} className="p-2 bg-black/60 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"><Trash2 size={16} /></button>
               </div>
             </div>
-            <div className="space-y-2 text-sm text-gray-400">
-              <p>Price: <span className="text-gold">{room.price.toLocaleString()} PKR</span></p>
-              <p>Capacity: {room.capacity} Guests</p>
-              <p>Status: <span className={room.isAvailable ? "text-green-400" : "text-red-400"}>{room.isAvailable ? "Available" : "Booked"}</span></p>
+            <div className="p-6">
+              <h3 className="text-xl font-serif mb-2">{room.type}</h3>
+              <div className="space-y-2 text-sm text-gray-400">
+                <p>Price: <span className="text-gold">{room.price.toLocaleString()} PKR</span></p>
+                <p>Capacity: {room.capacity} Guests</p>
+                <p>Status: <span className={room.isAvailable ? "text-green-400" : "text-red-400"}>{room.isAvailable ? "Available" : "Booked"}</span></p>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
-          <div className="bg-charcoal border border-white/10 p-8 rounded-[2rem] w-full max-w-lg">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="bg-charcoal border border-white/10 p-8 rounded-[2rem] w-full max-w-2xl my-8">
             <h2 className="text-2xl font-serif mb-6">{editingRoom ? "Edit Room" : "Add New Room"}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <input 
-                type="text" placeholder="Room Type" required value={formData.type}
-                onChange={e => setFormData({...formData, type: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
-              />
-              <input 
-                type="number" placeholder="Price (PKR)" required value={formData.price}
-                onChange={e => setFormData({...formData, price: Number(e.target.value)})}
-                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
-              />
-              <input 
-                type="number" placeholder="Capacity" required value={formData.capacity}
-                onChange={e => setFormData({...formData, capacity: Number(e.target.value)})}
-                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
-              />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input 
+                  type="text" placeholder="Room Type" required value={formData.type}
+                  onChange={e => setFormData({...formData, type: e.target.value})}
+                  className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+                />
+                <input 
+                  type="number" placeholder="Price (PKR)" required value={formData.price}
+                  onChange={e => setFormData({...formData, price: Number(e.target.value)})}
+                  className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input 
+                  type="number" placeholder="Capacity" required value={formData.capacity}
+                  onChange={e => setFormData({...formData, capacity: Number(e.target.value)})}
+                  className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+                />
+                <label className="flex items-center gap-3 cursor-pointer bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <input type="checkbox" checked={formData.isAvailable} onChange={e => setFormData({...formData, isAvailable: e.target.checked})} className="w-5 h-5 accent-gold" />
+                  <span className="text-sm">Available for Booking</span>
+                </label>
+              </div>
               <textarea 
                 placeholder="Description" value={formData.description}
                 onChange={e => setFormData({...formData, description: e.target.value})}
                 className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none h-32"
               />
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={formData.isAvailable} onChange={e => setFormData({...formData, isAvailable: e.target.checked})} className="w-5 h-5 accent-gold" />
-                <span>Available for Booking</span>
-              </label>
+              
+              <div>
+                <label className="text-xs uppercase tracking-widest text-gray-500 mb-3 block">Upload Room Pictures</label>
+                <input 
+                  type="file" multiple accept="image/*"
+                  onChange={e => setSelectedFiles(e.target.files)}
+                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-gold/10 file:text-gold hover:file:bg-gold/20 cursor-pointer"
+                />
+                
+                {formData.imageUrls && formData.imageUrls.length > 0 && (
+                  <div className="grid grid-cols-4 gap-4 mt-4">
+                    {formData.imageUrls.map((url, idx) => (
+                      <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-white/10">
+                        <img src={url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <button 
+                          type="button" onClick={() => removeImage(idx)}
+                          className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-red-500"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 bg-white/5 rounded-full font-bold uppercase tracking-widest text-xs">Cancel</button>
-                <button type="submit" className="flex-1 py-4 gold-gradient text-charcoal rounded-full font-bold uppercase tracking-widest text-xs">Save Room</button>
+                <button type="submit" disabled={uploading} className="flex-1 py-4 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm flex items-center justify-center gap-2">
+                  {uploading ? <Loader2 className="animate-spin" /> : "Save Room"}
+                </button>
               </div>
             </form>
           </div>
@@ -1060,6 +1274,125 @@ const AmenitiesManager = () => {
   );
 };
 
+const ReviewsManager = () => {
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingReview, setEditingReview] = useState<any>(null);
+  const [formData, setFormData] = useState({ name: '', rating: 5, comment: '', isActive: true });
+
+  useEffect(() => {
+    const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+      setReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingReview) {
+        await updateDoc(doc(db, 'reviews', editingReview.id), formData);
+      } else {
+        await addDoc(collection(db, 'reviews'), { ...formData, createdAt: serverTimestamp() });
+      }
+      setIsModalOpen(false);
+      setEditingReview(null);
+      setFormData({ name: '', rating: 5, comment: '', isActive: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'reviews');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Delete this review?")) {
+      await deleteDoc(doc(db, 'reviews', id));
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-serif">Guest Reviews</h1>
+        <button 
+          onClick={() => { setEditingReview(null); setFormData({ name: '', rating: 5, comment: '', isActive: true }); setIsModalOpen(true); }}
+          className="flex items-center gap-2 px-6 py-3 gold-gradient text-charcoal font-bold rounded-full uppercase tracking-widest text-sm"
+        >
+          <Plus size={18} /> Add Review
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {reviews.map((review) => (
+          <div key={review.id} className="bg-white/5 border border-white/10 p-6 rounded-3xl">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-xl font-bold">{review.name}</h3>
+                <div className="flex text-gold mt-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} />
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setEditingReview(review); setFormData(review); setIsModalOpen(true); }} className="p-2 hover:text-gold"><Edit size={18} /></button>
+                <button onClick={() => handleDelete(review.id)} className="p-2 hover:text-red-500"><Trash2 size={18} /></button>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm line-clamp-3 mb-4 italic">"{review.comment}"</p>
+            <span className={cn(
+              "px-2 py-1 rounded-md text-[10px] uppercase font-bold tracking-widest",
+              review.isActive ? "bg-green-500/10 text-green-500" : "bg-red-500/10 text-red-500"
+            )}>
+              {review.isActive ? 'Visible' : 'Hidden'}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+          <div className="bg-charcoal border border-white/10 p-8 rounded-[2rem] w-full max-w-md">
+            <h2 className="text-2xl font-serif mb-6">{editingReview ? "Edit Review" : "Add Review"}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input 
+                type="text" placeholder="Guest Name" required value={formData.name}
+                onChange={e => setFormData({...formData, name: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none"
+              />
+              <div className="flex items-center gap-4 bg-white/5 border border-white/10 p-4 rounded-xl">
+                <span className="text-sm text-gray-500">Rating:</span>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <button 
+                      key={num} type="button" onClick={() => setFormData({...formData, rating: num})}
+                      className={cn("p-1 transition-colors", formData.rating >= num ? "text-gold" : "text-gray-600")}
+                    >
+                      <Star size={20} fill={formData.rating >= num ? "currentColor" : "none"} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <textarea 
+                placeholder="Comment" required value={formData.comment}
+                onChange={e => setFormData({...formData, comment: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl focus:border-gold outline-none h-32"
+              />
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={formData.isActive} onChange={e => setFormData({...formData, isActive: e.target.checked})} className="w-5 h-5 accent-gold" />
+                <span className="text-sm">Visible on Website</span>
+              </label>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 bg-white/5 rounded-full font-bold uppercase tracking-widest text-xs">Cancel</button>
+                <button type="submit" className="flex-1 py-4 gold-gradient text-charcoal rounded-full font-bold uppercase tracking-widest text-xs">Save Review</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SettingsManager = () => {
   const [settings, setSettings] = useState({ whatsappNumber: '', bookingRating: '' });
   const [loading, setLoading] = useState(false);
@@ -1137,6 +1470,7 @@ export default function App() {
           <Route path="/admin/rooms" element={<AdminLayout><RoomsManager /></AdminLayout>} />
           <Route path="/admin/bookings" element={<AdminLayout><BookingLog /></AdminLayout>} />
           <Route path="/admin/amenities" element={<AdminLayout><AmenitiesManager /></AdminLayout>} />
+          <Route path="/admin/reviews" element={<AdminLayout><ReviewsManager /></AdminLayout>} />
           <Route path="/admin/gallery" element={<AdminLayout><GalleryManager /></AdminLayout>} />
           <Route path="/admin/settings" element={<AdminLayout><SettingsManager /></AdminLayout>} />
           <Route path="*" element={<Navigate to="/" />} />
