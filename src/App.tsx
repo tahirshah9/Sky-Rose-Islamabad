@@ -62,7 +62,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // --- Constants ---
-const ADMIN_EMAIL = "hospitalityhub164@gmail.com";
+const ADMIN_EMAILS = ["hospitalityhub164@gmail.com", "shahtah5572345@gmail.com"];
 const WHATSAPP_NUMBER = "923331574046";
 const PRE_FILLED_MESSAGE = encodeURIComponent("Hello! I would like to book a room at Sky Rose Guest House.");
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${PRE_FILLED_MESSAGE}`;
@@ -512,7 +512,7 @@ const AdminLogin = () => {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      if (result.user.email !== ADMIN_EMAIL) {
+      if (!ADMIN_EMAILS.includes(result.user.email || "")) {
         await signOut(auth);
         setError("Access Denied: Unauthorized Email.");
       } else {
@@ -555,7 +555,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
-      if (u && u.email === ADMIN_EMAIL) {
+      if (u && ADMIN_EMAILS.includes(u.email || "")) {
         setUser(u);
       } else {
         navigate('/admin');
