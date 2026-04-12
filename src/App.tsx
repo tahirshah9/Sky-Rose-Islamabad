@@ -89,20 +89,36 @@ const uploadImage = async (
   path: string, 
   onProgress: (progress: number, status: string) => void
 ): Promise<string> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s total timeout
+
   try {
     onProgress(0, 'Compressing...');
-    const compressedFile = await compressImage(file);
+    // Add a small timeout to compression as well
+    const compressedFile = await Promise.race([
+      compressImage(file),
+      new Promise<File>((_, reject) => setTimeout(() => reject(new Error("Compression timed out")), 20000))
+    ]).catch(err => {
+      console.warn("Compression failed or timed out, using original file:", err);
+      return file;
+    });
     
-    onProgress(0, 'Uploading...');
+    onProgress(0, 'Connecting...');
     
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append('file', compressedFile);
       formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-      formData.append('folder', path);
+      // Removed folder parameter to ensure maximum compatibility with unsigned presets
+      // formData.append('folder', path); 
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, true);
+
+      const uploadTimeout = setTimeout(() => {
+        xhr.abort();
+        reject(new Error("Upload timed out after 60 seconds. Please check your internet connection."));
+      }, 60000);
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -112,24 +128,39 @@ const uploadImage = async (
       };
 
       xhr.onload = () => {
+        clearTimeout(uploadTimeout);
+        clearTimeout(timeoutId);
         if (xhr.status === 200) {
           const response = JSON.parse(xhr.responseText);
           onProgress(100, 'Complete');
           resolve(response.secure_url);
         } else {
-          const error = JSON.parse(xhr.responseText);
-          console.error("Cloudinary error:", error);
-          reject(new Error(error.error?.message || "Upload failed to Cloudinary"));
+          try {
+            const error = JSON.parse(xhr.responseText);
+            console.error("Cloudinary error details:", error);
+            reject(new Error(error.error?.message || `Upload failed with status ${xhr.status}`));
+          } catch (e) {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
         }
       };
 
       xhr.onerror = () => {
-        reject(new Error("Network error during Cloudinary upload"));
+        clearTimeout(uploadTimeout);
+        clearTimeout(timeoutId);
+        reject(new Error("Network error. Please check if your Cloudinary Cloud Name is correct and your internet is working."));
+      };
+
+      xhr.onabort = () => {
+        clearTimeout(uploadTimeout);
+        clearTimeout(timeoutId);
+        reject(new Error("Upload was cancelled or timed out."));
       };
 
       xhr.send(formData);
     });
   } catch (err: any) {
+    clearTimeout(timeoutId);
     console.error("Outer upload error:", err);
     throw err;
   }
@@ -797,16 +828,16 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
         body: formData
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || "Cloudinary test failed");
+        throw new Error(data.error?.message || `Cloudinary test failed with status ${response.status}`);
       }
 
-      const data = await response.json();
       alert("✅ Cloudinary Test Successful!\n\nYour Cloudinary configuration is working.\n\nURL: " + data.secure_url);
     } catch (err: any) {
       console.error("Cloudinary Test Failed:", err);
-      alert(`❌ Cloudinary Test Failed!\n\nMessage: ${err.message}\n\nCommon Fixes:\n1. Check your Cloud Name in Settings.\n2. Ensure 'unsigned' upload preset is created in Cloudinary Settings > Upload.`);
+      alert(`❌ Cloudinary Test Failed!\n\nMessage: ${err.message}\n\nCommon Fixes:\n1. Check if Cloud Name 'di7qs86vr' is correct.\n2. Ensure 'skyrose_preset' is set to 'Unsigned' in Cloudinary Settings > Upload.\n3. Check your internet connection.`);
     } finally {
       setIsStorageTesting(false);
     }
