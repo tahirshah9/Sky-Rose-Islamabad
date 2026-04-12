@@ -26,9 +26,9 @@ import {
   orderBy,
   getDocs
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+// import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import imageCompression from 'browser-image-compression';
-import { auth, db, storage } from './firebase';
+import { auth, db } from './firebase';
 import { handleFirestoreError, OperationType, cn } from './utils';
 import { 
   LayoutDashboard, 
@@ -81,36 +81,58 @@ const compressImage = async (file: File) => {
   }
 };
 
+const CLOUDINARY_CLOUD_NAME = (import.meta as any).env.VITE_CLOUDINARY_CLOUD_NAME || 'di7qs86vr';
+const CLOUDINARY_UPLOAD_PRESET = (import.meta as any).env.VITE_CLOUDINARY_UPLOAD_PRESET || 'skyrose_preset';
+
 const uploadImage = async (
   file: File, 
   path: string, 
   onProgress: (progress: number, status: string) => void
 ): Promise<string> => {
-  onProgress(0, 'Compressing...');
-  const compressedFile = await compressImage(file);
-  
-  onProgress(0, 'Uploading...');
-  const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-  const uploadTask = uploadBytesResumable(storageRef, compressedFile);
+  try {
+    onProgress(0, 'Compressing...');
+    const compressedFile = await compressImage(file);
+    
+    onProgress(0, 'Uploading...');
+    
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', compressedFile);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      formData.append('folder', path);
 
-  return new Promise((resolve, reject) => {
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        onProgress(progress, 'Uploading...');
-      },
-      (error) => {
-        console.error("Upload error:", error);
-        reject(error);
-      },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        onProgress(100, 'Complete');
-        resolve(downloadURL);
-      }
-    );
-  });
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, true);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const progress = (e.loaded / e.total) * 100;
+          onProgress(progress, 'Uploading...');
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const response = JSON.parse(xhr.responseText);
+          onProgress(100, 'Complete');
+          resolve(response.secure_url);
+        } else {
+          const error = JSON.parse(xhr.responseText);
+          console.error("Cloudinary error:", error);
+          reject(new Error(error.error?.message || "Upload failed to Cloudinary"));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Network error during Cloudinary upload"));
+      };
+
+      xhr.send(formData);
+    });
+  } catch (err: any) {
+    console.error("Outer upload error:", err);
+    throw err;
+  }
 };
 
 const ProgressBar = ({ progress, status }: { progress: number, status?: string }) => (
@@ -747,6 +769,7 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isStorageTesting, setIsStorageTesting] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -758,6 +781,36 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
   }, [navigate]);
+
+  const testCloudinary = async () => {
+    setIsStorageTesting(true);
+    try {
+      const blob = new Blob(["test"], { type: "text/plain" });
+      const file = new File([blob], "test.txt");
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || "Cloudinary test failed");
+      }
+
+      const data = await response.json();
+      alert("✅ Cloudinary Test Successful!\n\nYour Cloudinary configuration is working.\n\nURL: " + data.secure_url);
+    } catch (err: any) {
+      console.error("Cloudinary Test Failed:", err);
+      alert(`❌ Cloudinary Test Failed!\n\nMessage: ${err.message}\n\nCommon Fixes:\n1. Check your Cloud Name in Settings.\n2. Ensure 'unsigned' upload preset is created in Cloudinary Settings > Upload.`);
+    } finally {
+      setIsStorageTesting(false);
+    }
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-charcoal"><Loader2 className="animate-spin text-gold w-12 h-12" /></div>;
 
@@ -791,13 +844,34 @@ const AdminLayout = ({ children }: { children: React.ReactNode }) => {
           ))}
         </nav>
 
-        <button 
-          onClick={() => signOut(auth)}
-          className="mt-auto flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
-        >
-          <LogOut size={20} />
-          <span className="text-sm font-medium">Logout</span>
-        </button>
+        <div className="mt-auto space-y-4">
+          <button 
+            onClick={testCloudinary}
+            disabled={isStorageTesting}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest border border-gold/30 text-gold hover:bg-gold/10 transition-colors"
+          >
+            {isStorageTesting ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
+            Test Cloudinary
+          </button>
+          
+          <div className="flex items-center gap-3 px-4 py-2">
+            <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center text-gold font-bold text-xs">
+              {user?.email?.[0].toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold truncate">{user?.email}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-tighter">Administrator</p>
+            </div>
+          </div>
+
+          <button 
+            onClick={() => signOut(auth)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <LogOut size={20} />
+            <span className="text-sm font-medium">Logout</span>
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 p-6 md:p-10 overflow-y-auto">
@@ -892,7 +966,7 @@ const RoomsManager = () => {
     }
     setUploadProgress(prev => ({ ...prev, ...initialProgress }));
 
-    const urls: string[] = [];
+    const newUrls: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
@@ -904,16 +978,29 @@ const RoomsManager = () => {
             [file.name]: { progress, status } 
           }))
         );
-        urls.push(url);
-      } catch (err) {
+        newUrls.push(url);
+        
+        // If we are editing an existing room, update it immediately
+        if (editingRoom) {
+          const roomRef = doc(db, 'rooms', editingRoom.id);
+          const currentUrls = formData.imageUrls || [];
+          const updatedUrls = [...currentUrls, ...newUrls];
+          await updateDoc(roomRef, { imageUrls: updatedUrls });
+          setFormData(prev => ({ ...prev, imageUrls: updatedUrls }));
+        }
+      } catch (err: any) {
         console.error(`Failed to upload ${file.name}:`, err);
+        alert(`Failed to upload ${file.name}: ${err.message}`);
         setUploadProgress(prev => ({ 
           ...prev, 
           [file.name]: { progress: 0, status: 'Failed' } 
         }));
       }
     }
-    return urls;
+    
+    // Clear progress after a delay
+    setTimeout(() => setUploadProgress({}), 3000);
+    return newUrls;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

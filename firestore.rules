@@ -52,7 +52,9 @@ service cloud.firestore {
              data.type is string && data.type.size() > 0 && data.type.size() < 100 &&
              data.price is number && data.price >= 0 &&
              data.capacity is number && data.capacity > 0 &&
-             data.isAvailable is bool;
+             data.isAvailable is bool &&
+             (!('imageUrl' in data) || data.imageUrl is string) &&
+             (!('imageUrls' in data) || data.imageUrls is list);
     }
 
     function isValidBooking(data) {
