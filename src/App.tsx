@@ -186,7 +186,11 @@ const ProgressBar = ({ progress, status }: { progress: number, status?: string }
 const PRE_FILLED_MESSAGE = encodeURIComponent("Hello! I would like to book a room at Sky Rose Guest House.");
 const WHATSAPP_LINK = `https://wa.me/${WHATSAPP_NUMBER}?text=${PRE_FILLED_MESSAGE}`;
 const GOOGLE_MAPS_KEY = "AIzaSyD1-8j7p8zwoW2ncOYyvyxMidMpqaDTVu8";
-const ADDRESS = "40, NPF MPCHS, E-11/3, Islamabad";
+const ADDRESS = "Street 40, NPF MPCHS, E-11/3, Islamabad";
+const MAP_LAT = "33.6994";
+const MAP_LNG = "72.9783";
+const MAP_ZOOM = "18";
+const DIRECTIONS_URL = `https://www.google.com/maps/dir/?api=1&destination=${MAP_LAT},${MAP_LNG}`;
 
 // --- Components ---
 
@@ -725,10 +729,28 @@ const LandingPage = () => {
                   <div className="w-12 h-12 rounded-full bg-gold/10 flex items-center justify-center text-gold"><Phone size={24} /></div>
                   <div><h4 className="font-bold">WhatsApp</h4><p className="text-sm text-gray-500">+{WHATSAPP_NUMBER}</p></div>
                 </div>
+                <a 
+                  href={DIRECTIONS_URL} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 w-full py-4 bg-gold text-black font-bold rounded-xl hover:bg-gold/90 transition-colors"
+                >
+                  <MapPin size={20} />
+                  Get Directions
+                </a>
               </div>
             </div>
             <div className="h-[500px] rounded-[2rem] overflow-hidden border border-gold/20 shadow-2xl">
-              <iframe width="100%" height="100%" style={{ border: 0 }} loading="lazy" allowFullScreen referrerPolicy="no-referrer-when-downgrade" src={`https://www.google.com/maps/embed/v1/place?key=${GOOGLE_MAPS_KEY}&q=${encodeURIComponent(ADDRESS)}`}></iframe>
+              <iframe 
+                width="100%" 
+                height="100%" 
+                style={{ border: 0 }} 
+                loading="lazy" 
+                allowFullScreen 
+                referrerPolicy="no-referrer-when-downgrade" 
+                title="Sky Rose Guest House Location"
+                src={`https://www.google.com/maps/embed/v1/place?key=${GOOGLE_MAPS_KEY}&q=Sky+Rose+Guest+House@${MAP_LAT},${MAP_LNG}&zoom=${MAP_ZOOM}`}
+              ></iframe>
             </div>
           </div>
         </div>
